@@ -1,0 +1,8 @@
+{{/* Render .Values.networkPolicies through the templates dependency's exposed renderer, with root set to
+     THIS (parent) chart so tpl in the policy values resolves against this chart's own helpers. Honors
+     enabled: false per entry. */}}
+{{- range $name, $value := (.Values.networkPolicies | default dict) }}
+{{- if and $value (ne $value.enabled false) }}
+{{- include "templates.networkPolicy" (dict "root" $ "name" $name "value" $value) }}
+{{- end }}
+{{- end }}

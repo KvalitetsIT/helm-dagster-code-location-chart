@@ -1,0 +1,167 @@
+# -- Image. repository defaults to <registry>/<release name, '-'->'_'>; set tag or digest (or both).
+# @default -- See [values.yaml](values.yaml)
+# @section -- Code location
+image:
+  # -- Registry, e.g. my-registry.example.com/my-org. Ignored when repository is set.
+  # @section -- Code location
+  registry: ""
+  # -- Full repository override.
+  # @section -- Code location
+  repository: ""
+  # -- Image tag. Required unless digest is set.
+  # @section -- Code location
+  tag: ""
+  # -- Image digest (recommended). Required unless tag is set.
+  # @section -- Code location
+  digest: ""
+  # -- Pull policy for the code server.
+  # @section -- Code location
+  pullPolicy: IfNotPresent
+
+# -- Python module passed as -m. Defaults to <release name, '-'->'_'>.definitions.
+# @section -- Code location
+module: ""
+
+# -- Location name and discovery-label value. Defaults to the release name.
+# @section -- Code location
+locationName: ""
+
+# -- gRPC entrypoint: api-grpc (default) or code-server (hot reload).
+# @section -- Code location
+command: api-grpc
+
+# -- Code-server resources (definition loading only). Run pods are sized via runPod.resources.
+# @default -- See [values.yaml](values.yaml)
+# @section -- Code location
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# -- Env for the code server and run pods. HOME, TMPDIR and PYTHONDONTWRITEBYTECODE are appended.
+# @default -- []
+# @section -- Code location
+env: []
+
+# -- Env appended after env, so an overlay values file extends rather than replaces it.
+# @default -- []
+# @section -- Code location
+extraEnvs: []
+
+# -- envFrom sources for the code server and run pods, e.g. `- secretRef: {name: x}`.
+# @default -- []
+# @section -- Code location
+envFrom: []
+
+# -- envFrom appended after envFrom, so an overlay values file extends rather than replaces it.
+# @default -- []
+# @section -- Code location
+extraEnvFrom: []
+
+# -- Code-server volumes: {name, mountPath, readOnly?, subPath?, volumeSpec}. Default is a writable
+# /tmp the read-only root filesystem needs. Run-pod volumes come from the core runLauncher.
+# @default -- See [values.yaml](values.yaml)
+# @section -- Code location
+volumes:
+  - name: tmp
+    mountPath: /tmp
+    volumeSpec:
+      emptyDir:
+        sizeLimit: 1Gi
+
+# -- Volumes appended after volumes, so an overlay values file extends rather than replaces it.
+# @default -- []
+# @section -- Code location
+extraVolumes: []
+
+# -- imagePullSecret names for the code server and run pods.
+# @section -- Code location
+imagePullSecrets:
+  - ghcr-pull
+
+# -- ServiceAccount for the code server and run pods. The code location is unprivileged: the namespace
+# default SA, token unmounted, no RBAC.
+# @section -- Code location
+serviceAccountName: default
+
+# -- Metadata DB password secret the code server reads as DAGSTER_PG_PASSWORD. Schedule and sensor
+# evaluation run in the code server and access the Dagster instance (Postgres), so it needs the
+# password; run pods get it from the core runLauncher instead. The secret is reflected into the
+# namespace by the tenant projectDefaults under this fixed name.
+# @default -- See [values.yaml](values.yaml)
+# @section -- Code location
+metadataSecret:
+  name: postgres-dagster-credentials
+  key: postgresql-password
+
+# -- Pod securityContext for the code server (fsGroup lets the non-root uid write /tmp).
+# @default -- See [values.yaml](values.yaml)
+# @section -- Code location
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container securityContext for the code server.
+# @default -- See [values.yaml](values.yaml)
+# @section -- Code location
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- Per-location run-pod overrides, deep-merged onto the core runLauncher baseline. Set only what
+# differs; empty inherits the core (securityContext, /tmp, netbird, resources floor).
+# @default -- See [values.yaml](values.yaml)
+# @section -- Run pods
+runPod:
+  # -- Run-pod resources (sizes the data work). Empty inherits the core baseline.
+  # @section -- Run pods
+  resources: {}
+  # -- Pod securityContext override (e.g. a different runAsUser). Empty inherits the core baseline.
+  # @section -- Run pods
+  podSecurityContext: {}
+
+# -- NetworkPolicies for this code location. Rendered by this chart (not the subchart) through the
+# templates dependency's renderer with this chart as the root, so template expressions in the values
+# resolve against this chart's helpers. Ships the ingress policy letting the tenant's dagster-core
+# reach the code server; add per-location egress here too.
+# @default -- See [values.yaml](values.yaml)
+# @section -- Networking
+networkPolicies:
+  # Allow the tenant's dagster-core (webserver + daemon) to reach the code server on grpc/4000. Tenant
+  # is derived from the release namespace. Disable with `ingress-from-dagster-core.enabled: false`.
+  ingress-from-dagster-core:
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: '{{ include "dagster-code-location.name" . }}'
+        app.kubernetes.io/instance: '{{ .Release.Name }}'
+    policyTypes: [Ingress]
+    ingress:
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                tenant.kitkube.dk/name: '{{ include "dagster-code-location.tenant" . }}'
+                project.kitkube.dk/name: dagster-core
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: dagster
+                app.kubernetes.io/instance: dagster
+        ports:
+          - protocol: TCP
+            port: 4000
+
+# -- Support resources rendered by the [templates subchart](https://github.com/KvalitetsIT/helm-templates-chart/tree/main/charts/templates):
+# CiliumNetworkPolicy, SealedSecret, reflected Secret mirrors and generic resources. Plain
+# NetworkPolicies live under `networkPolicies` above.
+# @default -- {}
+# @section -- Templates
+templates: {}

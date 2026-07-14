@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+env:
+  CHART: dagster-code-location
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: "v3.17.0"
+
+      - name: Detect version from tag
+        id: info
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"    # e.g. v1.2.0 -> 1.2.0
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set chart version
+        env:
+          VERSION: ${{ steps.info.outputs.version }}
+        run: |
+          sed -i "s/^version: .*/version: ${VERSION}/g" "charts/${CHART}/Chart.yaml"
+          sed -i "s/^appVersion: .*/appVersion: \"${VERSION}\"/g" "charts/${CHART}/Chart.yaml"
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add kvalitetsit https://raw.githubusercontent.com/KvalitetsIT/helm-repo/master/
+          helm repo update
+
+      - name: Update chart dependencies
+        run: helm dependency update "charts/${CHART}"
+
+      - name: Build chart
+        run: helm package "charts/${CHART}"
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "development@kvalitetsit.dk"
+
+      - name: Checkout Helm repo
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: KvalitetsIT/helm-repo
+          token: ${{ secrets.KIT_GITHUB_ACCESS }}
+          path: helm-repo
+
+      - name: Publish chart
+        env:
+          VERSION: ${{ steps.info.outputs.version }}
+        run: |
+          mkdir -p "helm-repo/${CHART}"
+          cp "${CHART}"-*.tgz "helm-repo/${CHART}/"
+          cd helm-repo
+          helm repo index . --url https://raw.githubusercontent.com/KvalitetsIT/helm-repo/master/
+          git add -A
+          git commit -m "Release ${CHART} chart version ${VERSION}"
+          git push
+
+  github-release:
+    needs:
+      - release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Extract changelog section
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          awk "/^## \[${VERSION}\]/{found=1; next} found && /^## /{exit} found" \
+            "charts/${CHART}/CHANGELOG.md" > release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2.4.2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

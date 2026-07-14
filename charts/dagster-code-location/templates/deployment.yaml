@@ -1,0 +1,85 @@
+{{- $allVolumes := concat (.Values.volumes | default list) (.Values.extraVolumes | default list) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dagster-code-location.name" . }}
+  labels:
+    {{- include "dagster-code-location.labels" . | nindent 4 }}
+    {{- include "dagster-code-location.discoveryLabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dagster-code-location.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dagster-code-location.labels" . | nindent 8 }}
+        {{- include "dagster-code-location.discoveryLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      # Unprivileged: default ServiceAccount, token unmounted (the code server makes no API calls).
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: code-location
+          image: {{ include "dagster-code-location.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if eq .Values.command "code-server" }}
+          args: ["dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", {{ include "dagster-code-location.module" . | quote }}]
+          {{- else }}
+          args: ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", {{ include "dagster-code-location.module" . | quote }}]
+          {{- end }}
+          ports:
+            - name: grpc
+              containerPort: 4000
+          env:
+            {{- include "dagster-code-location.env" . | trim | nindent 12 }}
+            # DAGSTER_HOME points at the writable /tmp for any ephemeral state.
+            - name: DAGSTER_HOME
+              value: /tmp
+            # Schedule/sensor evaluation runs in the code server and reads the Dagster instance; the
+            # daemon passes the instance ref with the password as env DAGSTER_PG_PASSWORD, so provide it.
+            # Run pods get this from the core runLauncher instead.
+            - name: DAGSTER_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.metadataSecret.name }}
+                  key: {{ .Values.metadataSecret.key }}
+            - name: DAGSTER_CURRENT_IMAGE
+              value: {{ include "dagster-code-location.image" . | quote }}
+            - name: DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT
+              value: {{ include "dagster-code-location.containerContext" . | quote }}
+          {{- with (include "dagster-code-location.envFrom" . | fromYamlArray) }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["dagster", "api", "grpc-health-check", "-p", "4000"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- with $allVolumes }}
+          volumeMounts:
+            {{- range . }}
+            {{- include "dagster-code-location.volumeMount" . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- with $allVolumes }}
+      volumes:
+        {{- range . }}
+        {{- include "dagster-code-location.podVolume" . | nindent 8 }}
+        {{- end }}
+      {{- end }}

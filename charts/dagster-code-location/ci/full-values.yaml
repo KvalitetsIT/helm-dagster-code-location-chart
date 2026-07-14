@@ -1,0 +1,118 @@
+# Full location shape: explicit env (database and bucket connection config with credentials via
+# valueFrom secretKeyRef), an extraEnvs overlay entry, a run-pod resource override, and this location's
+# support resources (secret mirror, network policies, object-storage egress) rendered via the templates
+# subchart passthrough. Hardening, /tmp and netbird for run pods come from the tenant core, not here.
+image:
+  registry: ghcr.io/example
+  tag: "1.1.0"
+module: full_location.definitions
+locationName: full_location
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# run pods for this location need more headroom than the shared core baseline; deep-merged on top of it
+runPod:
+  resources:
+    requests:
+      cpu: "2"
+      memory: 2Gi
+    limits:
+      cpu: "8"
+      memory: 8Gi
+
+env:
+  - name: TARGET_FULL_LOCATION_HOST
+    value: full-location-rw.svc.cluster.local
+  - name: TARGET_FULL_LOCATION_PORT
+    value: "5432"
+  - name: TARGET_FULL_LOCATION_DBNAME
+    value: full_location
+  - name: TARGET_FULL_LOCATION_USER
+    valueFrom:
+      secretKeyRef:
+        name: full-location-db
+        key: username
+  - name: TARGET_FULL_LOCATION_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: full-location-db
+        key: password
+  - name: FULL_LOCATION_S3_ENDPOINT
+    value: https://s3.example.com
+  - name: FULL_LOCATION_S3_BUCKET
+    value: full-location
+  - name: FULL_LOCATION_S3_ID
+    valueFrom:
+      secretKeyRef:
+        name: full-location-s3-credentials
+        key: access-key-id
+  - name: FULL_LOCATION_S3_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: full-location-s3-credentials
+        key: secret-access-key
+
+# overlay-style extension (a values-<env>.yaml would set these without replacing env above)
+extraEnvs:
+  - name: ORACLE_HOST
+    value: "oracle.example.com"
+  - name: ORACLE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: oracle-creds
+        key: password
+
+envFrom:
+  - secretRef:
+      name: ftps-creds
+
+# extra code-server volume (the default /tmp entry is kept); demonstrates the kitapp-style volume shape
+extraVolumes:
+  - name: extra-config
+    mountPath: /etc/extra
+    readOnly: true
+    volumeSpec:
+      configMap:
+        name: extra-config
+
+# location-specific netpol, merged with the built-in ingress-from-dagster-core policy
+networkPolicies:
+  egress-to-app-data:
+    podSelector: {}
+    policyTypes:
+      - Egress
+    egress:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                tenant.kitkube.dk/name: data
+                project.kitkube.dk/name: example
+
+templates:
+  resources:
+    # Mirror this location's app-data DB credentials into the namespace (location-specific). The shared
+    # Dagster metadata credentials come from the tenant projectDefaults, not here.
+    full-location-db:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        annotations:
+          reflector.v1.k8s.emberstack.com/reflects: "data-example/full-location-db"
+      data: {}
+
+  ciliumNetworkPolicies:
+    object-storage:
+      endpointSelector: {}
+      egress:
+        - toFQDNs:
+            - matchPattern: "*.s3.example.com"
+          toPorts:
+            - ports:
+                - port: "443"
+                  protocol: TCP

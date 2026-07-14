@@ -1,0 +1,23 @@
+apiVersion: v2
+type: application
+name: dagster-code-location
+version: 0.0.0
+appVersion: 1.13.13
+description: >
+  A single Dagster code location: a hardened gRPC code server (Deployment + Service) deployed as its
+  own release into a per-project namespace. Carries the discovery labels the KDS workspace generator
+  groups locations by, and the container context the tenant core's K8sRunLauncher uses to launch this
+  location's run pods.
+home: https://github.com/KvalitetsIT
+icon: https://raw.githubusercontent.com/KvalitetsIT/.github/refs/heads/main/assets/favicon.png
+sources:
+  - https://github.com/KvalitetsIT/helm-dagster-code-location-chart
+  - https://github.com/KvalitetsIT/helm-templates-chart/tree/main/charts/templates
+maintainers:
+  - name: KvalitetsIT
+    email: kithosting@kvalitetsit.dk
+    url: https://github.com/KvalitetsIT/helm-repo
+dependencies:
+  - name: templates
+    version: 2.2.0
+    repository: https://raw.githubusercontent.com/KvalitetsIT/helm-repo/master/
