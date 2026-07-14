@@ -1,11 +1,8 @@
-# -- Image. repository defaults to <registry>/<release name, '-'->'_'>; set tag or digest (or both).
+# -- Code server image. Set tag or digest (or both).
 # @default -- See [values.yaml](values.yaml)
 # @section -- Code location
 image:
-  # -- Registry, e.g. my-registry.example.com/my-org. Ignored when repository is set.
-  # @section -- Code location
-  registry: ""
-  # -- Full repository override.
+  # -- Image repository, e.g. ghcr.io/my-org/my-location. Required.
   # @section -- Code location
   repository: ""
   # -- Image tag. Required unless digest is set.
@@ -26,9 +23,21 @@ module: ""
 # @section -- Code location
 locationName: ""
 
-# -- gRPC entrypoint: api-grpc (default) or code-server (hot reload).
+# -- Container args for the code server (native container args, templated). Default runs `dagster api
+# grpc` on 4000 serving `module`. Override with the full arg list for a different entrypoint, e.g.
+# `dagster code-server start ...` for hot reload.
+# @default -- See [values.yaml](values.yaml)
 # @section -- Code location
-command: api-grpc
+args:
+  - dagster
+  - api
+  - grpc
+  - -h
+  - 0.0.0.0
+  - -p
+  - "4000"
+  - -m
+  - '{{ include "dagster-code-location.module" . }}'
 
 # -- Code-server resources (definition loading only). Run pods are sized via runPod.resources.
 # @default -- See [values.yaml](values.yaml)
@@ -41,7 +50,8 @@ resources:
     cpu: 1000m
     memory: 512Mi
 
-# -- Env for the code server and run pods. HOME, TMPDIR and PYTHONDONTWRITEBYTECODE are appended.
+# -- Env for the code server and run pods. HOME, TMPDIR and PYTHONDONTWRITEBYTECODE default to /tmp but
+# can be overridden by setting them here.
 # @default -- []
 # @section -- Code location
 env: []
@@ -143,7 +153,7 @@ networkPolicies:
     podSelector:
       matchLabels:
         app.kubernetes.io/name: '{{ include "dagster-code-location.name" . }}'
-        app.kubernetes.io/instance: '{{ .Release.Name }}'
+        app.kubernetes.io/instance: '{{ .Release.Name | trunc 63 | trimSuffix "-" }}'
     policyTypes: [Ingress]
     ingress:
       - from:

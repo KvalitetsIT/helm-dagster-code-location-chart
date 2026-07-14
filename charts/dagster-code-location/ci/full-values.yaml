@@ -3,7 +3,7 @@
 # support resources (secret mirror, network policies, object-storage egress) rendered via the templates
 # subchart passthrough. Hardening, /tmp and netbird for run pods come from the tenant core, not here.
 image:
-  registry: ghcr.io/example
+  repository: ghcr.io/example/full-location
   tag: "1.1.0"
 module: full_location.definitions
 locationName: full_location

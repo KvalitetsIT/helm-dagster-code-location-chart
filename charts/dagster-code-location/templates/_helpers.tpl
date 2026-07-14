@@ -13,13 +13,9 @@
 {{- .Values.locationName | default (include "dagster-code-location.name" .) -}}
 {{- end -}}
 
-{{/* full image ref. repository defaults to <registry>/<release name underscored>. digest wins when set
-     (repository:tag@digest if both given), else tag; one of the two is required. */}}
+{{/* full image ref. digest wins when set (repository:tag@digest if both given), else tag; one is required. */}}
 {{- define "dagster-code-location.image" -}}
-{{- $repo := .Values.image.repository -}}
-{{- if not $repo -}}
-{{- $repo = printf "%s/%s" (required "image.registry is required (or set image.repository)" .Values.image.registry) (.Release.Name | replace "-" "_") -}}
-{{- end -}}
+{{- $repo := required "image.repository is required" .Values.image.repository -}}
 {{- if .Values.image.digest -}}
 {{- if .Values.image.tag -}}
 {{- printf "%s:%s@%s" $repo .Values.image.tag .Values.image.digest -}}
@@ -38,7 +34,7 @@
 
 {{- define "dagster-code-location.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "dagster-code-location.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/instance: {{ .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- end -}}
 
 {{- define "dagster-code-location.labels" -}}
@@ -57,19 +53,18 @@ dagster.io/code-location: "true"
 dagster.io/location-name: {{ include "dagster-code-location.locationName" . }}
 {{- end -}}
 
-{{/* Env for the code server and the run pods: env + extraEnvs (overlay-extend), then HOME/TMPDIR/
-     PYTHONDONTWRITEBYTECODE (read-only root fs needs a writable HOME). DAGSTER_HOME, DAGSTER_PG_PASSWORD
-     and the instance are not set here - run pods get them from the core, the code server needs none. */}}
+{{/* Env for the code server and the run pods: env + extraEnvs (overlay-extend), plus HOME/TMPDIR/
+     PYTHONDONTWRITEBYTECODE (the read-only root fs needs a writable HOME) added only when the user has
+     not set them, so they stay overridable. DAGSTER_HOME, DAGSTER_PG_PASSWORD and the instance are not
+     set here - the Deployment sets them for the code server, run pods get them from the core. */}}
 {{- define "dagster-code-location.env" -}}
-{{- with concat (.Values.env | default list) (.Values.extraEnvs | default list) }}
-{{ toYaml . }}
-{{- end }}
-- name: HOME
-  value: "/tmp"
-- name: TMPDIR
-  value: "/tmp"
-- name: PYTHONDONTWRITEBYTECODE
-  value: "1"
+{{- $env := concat (.Values.env | default list) (.Values.extraEnvs | default list) -}}
+{{- $set := dict -}}
+{{- range $env -}}{{- $_ := set $set .name true -}}{{- end -}}
+{{- if not (hasKey $set "HOME") -}}{{- $env = append $env (dict "name" "HOME" "value" "/tmp") -}}{{- end -}}
+{{- if not (hasKey $set "TMPDIR") -}}{{- $env = append $env (dict "name" "TMPDIR" "value" "/tmp") -}}{{- end -}}
+{{- if not (hasKey $set "PYTHONDONTWRITEBYTECODE") -}}{{- $env = append $env (dict "name" "PYTHONDONTWRITEBYTECODE" "value" "1") -}}{{- end -}}
+{{- toYaml $env -}}
 {{- end -}}
 
 {{/* combined envFrom sources: envFrom plus extraEnvFrom (overlay-extend). Standard k8s envFrom entries

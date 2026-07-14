@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-07-14
+
+### Changed
+- `image`: removed `image.registry` and the auto-derived `<registry>/<release-name>` repository. Set `image.repository` explicitly instead (it was already the primary field). Consumers using `image.registry` must switch to `image.repository`.
+- `command`: replaced the `command: api-grpc | code-server` mode enum with a native, templated `args` list (defaults to `dagster api grpc` on 4000 serving `module`). Override `args` with the full arg list for a different entrypoint, e.g. `dagster code-server start ...`. Consumers setting `command` must move to `args`.
+
+### Fixed
+- `app.kubernetes.io/instance` label is now truncated to 63 characters (like the name label), so a long release name cannot produce an invalid label value.
+- `HOME`, `TMPDIR` and `PYTHONDONTWRITEBYTECODE` are now added only when not already present in `env`/`extraEnvs`, so they can be overridden instead of being silently forced.
+
 ## [0.0.1] - 2026-07-14
 
 ### Added

@@ -27,17 +27,16 @@ A single Dagster code location: a hardened gRPC code server (Deployment + Servic
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| image | object | See [values.yaml](values.yaml) | Image. repository defaults to <registry>/<release name, '-'->'_'>; set tag or digest (or both). |
-| image.registry | string | `""` | Registry, e.g. my-registry.example.com/my-org. Ignored when repository is set. |
-| image.repository | string | `""` | Full repository override. |
+| image | object | See [values.yaml](values.yaml) | Code server image. Set tag or digest (or both). |
+| image.repository | string | `""` | Image repository, e.g. ghcr.io/my-org/my-location. Required. |
 | image.tag | string | `""` | Image tag. Required unless digest is set. |
 | image.digest | string | `""` | Image digest (recommended). Required unless tag is set. |
 | image.pullPolicy | string | `"IfNotPresent"` | Pull policy for the code server. |
 | module | string | `""` | Python module passed as -m. Defaults to <release name, '-'->'_'>.definitions. |
 | locationName | string | `""` | Location name and discovery-label value. Defaults to the release name. |
-| command | string | `"api-grpc"` | gRPC entrypoint: api-grpc (default) or code-server (hot reload). |
+| args | list | See [values.yaml](values.yaml) | Container args for the code server (native container args, templated). Default runs `dagster api grpc` on 4000 serving `module`. Override with the full arg list for a different entrypoint, e.g. `dagster code-server start ...` for hot reload. |
 | resources | object | See [values.yaml](values.yaml) | Code-server resources (definition loading only). Run pods are sized via runPod.resources. |
-| env | list | [] | Env for the code server and run pods. HOME, TMPDIR and PYTHONDONTWRITEBYTECODE are appended. |
+| env | list | [] | Env for the code server and run pods. HOME, TMPDIR and PYTHONDONTWRITEBYTECODE default to /tmp but can be overridden by setting them here. |
 | extraEnvs | list | [] | Env appended after env, so an overlay values file extends rather than replaces it. |
 | envFrom | list | [] | envFrom sources for the code server and run pods, e.g. `- secretRef: {name: x}`. |
 | extraEnvFrom | list | [] | envFrom appended after envFrom, so an overlay values file extends rather than replaces it. |
@@ -139,7 +138,7 @@ The `templates` value is passed to the [KvalitetsIT templates subchart](https://
 # network policy; no databases, buckets, extra env, run-pod resource override, or templates-subchart
 # resources. The target core namespace is derived from the release namespace at deploy time.
 image:
-  registry: ghcr.io/example
+  repository: ghcr.io/example/simple-location
   tag: "1.0.0"
 module: simple_location.definitions
 locationName: simple_location
@@ -155,7 +154,7 @@ Exercises `env` (database and bucket connection config), an `extraEnvs` overlay,
 # support resources (secret mirror, network policies, object-storage egress) rendered via the templates
 # subchart passthrough. Hardening, /tmp and netbird for run pods come from the tenant core, not here.
 image:
-  registry: ghcr.io/example
+  repository: ghcr.io/example/full-location
   tag: "1.1.0"
 module: full_location.definitions
 locationName: full_location

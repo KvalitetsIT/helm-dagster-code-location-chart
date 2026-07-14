@@ -2,7 +2,7 @@
 # network policy; no databases, buckets, extra env, run-pod resource override, or templates-subchart
 # resources. The target core namespace is derived from the release namespace at deploy time.
 image:
-  registry: ghcr.io/example
+  repository: ghcr.io/example/simple-location
   tag: "1.0.0"
 module: simple_location.definitions
 locationName: simple_location

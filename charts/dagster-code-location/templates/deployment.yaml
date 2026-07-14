@@ -32,11 +32,10 @@ spec:
         - name: code-location
           image: {{ include "dagster-code-location.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if eq .Values.command "code-server" }}
-          args: ["dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", {{ include "dagster-code-location.module" . | quote }}]
-          {{- else }}
-          args: ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", {{ include "dagster-code-location.module" . | quote }}]
-          {{- end }}
+          args:
+            {{- range .Values.args }}
+            - {{ tpl . $ | quote }}
+            {{- end }}
           ports:
             - name: grpc
               containerPort: 4000
