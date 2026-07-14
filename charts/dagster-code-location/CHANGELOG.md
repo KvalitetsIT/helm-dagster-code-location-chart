@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-07-14
+
 ### Added
 - Initial release. A single Dagster code location: a hardened gRPC code server (Deployment + Service) deployed as its own release into a per-project namespace. Carries the discovery labels the KDS workspace generator groups locations by, and the `DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT` the tenant core's K8sRunLauncher uses to launch this location's run pods.
 - `env` / `extraEnvs`, `envFrom` / `extraEnvFrom` and `volumes` / `extraVolumes`: base plus overlay lists so a `values-<env>.yaml` extends rather than replaces the base.
