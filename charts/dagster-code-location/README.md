@@ -52,7 +52,7 @@ A single Dagster code location: a hardened gRPC code server (Deployment + Servic
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| runPod | object | See [values.yaml](values.yaml) | Per-location run-pod overrides, deep-merged onto the core runLauncher baseline. Set only what differs; empty inherits the core (securityContext, /tmp, netbird, resources floor). |
+| runPod | object | See [values.yaml](values.yaml) | Per-location run-pod overrides, deep-merged onto the core runLauncher baseline. Set only what differs; empty inherits the core (securityContext, /tmp, sidecars, resources floor). |
 | runPod.resources | object | `{}` | Run-pod resources (sizes the data work). Empty inherits the core baseline. |
 | runPod.podSecurityContext | object | `{}` | Pod securityContext override (e.g. a different runAsUser). Empty inherits the core baseline. |
 
@@ -111,13 +111,13 @@ There is deliberately no core-namespace label: the generator derives the target 
 
 ## Environment variables
 
-`env` is the location's app config (database and bucket connection env, credentials via `valueFrom.secretKeyRef`), applied to both the code server and the launched run pods. `extraEnvs` is appended after `env` so an overlay values file (e.g. `values-<env>.yaml`) can extend it without replacing it - Helm replaces list values across files rather than merging them, so a single `env` key across two files would lose the base entries. `envFrom` (extended by `extraEnvFrom`) carries whole-secret / ConfigMap sources as standard envFrom entries (`{secretRef}`/`{configMapRef}`); the chart applies them verbatim to the code server and extracts their names into the run pods' container context (`env_secrets`/`env_config_maps`). The chart appends `HOME=/tmp`, `TMPDIR=/tmp` and `PYTHONDONTWRITEBYTECODE=1` (the read-only root filesystem needs a writable `HOME`).
+`env` is the location's application config (settings and credentials via `valueFrom.secretKeyRef`), applied to both the code server and the launched run pods. `extraEnvs` is appended after `env` so an overlay values file (e.g. `values-<env>.yaml`) can extend it without replacing it - Helm replaces list values across files rather than merging them, so a single `env` key across two files would lose the base entries. `envFrom` (extended by `extraEnvFrom`) carries whole-secret / ConfigMap sources as standard envFrom entries (`{secretRef}`/`{configMapRef}`); the chart applies them verbatim to the code server and extracts their names into the run pods' container context (`env_secrets`/`env_config_maps`). The chart appends `HOME=/tmp`, `TMPDIR=/tmp` and `PYTHONDONTWRITEBYTECODE=1` (the read-only root filesystem needs a writable `HOME`).
 
 ## Container context and run pods
 
 The code server sets `DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT` on its own container: a JSON blob the tenant core's K8sRunLauncher deep-merges into every run pod it launches for this location. It carries only per-location deltas - routing (`namespace: <Release.Namespace>` so runs launch into this location's own namespace, the `default` ServiceAccount, image pull secrets) and payload (the location `env`, `env_secrets`, and `runPod.resources`). Optionally it carries `runPod.podSecurityContext` when the location image needs a different uid.
 
-All run-pod hardening is the core runLauncher baseline, configured once per core and inherited by every location: the container securityContext (drop `ALL`, read-only root filesystem, no privilege escalation), the pod-level securityContext (`runAsNonRoot`/`runAsUser`/`runAsGroup`/`fsGroup`/seccomp Kyverno's Restricted PSS requires), `automountServiceAccountToken: false`, the writable `/tmp` emptyDir, the netbird sidecar label, `DAGSTER_HOME`, and `DAGSTER_PG_PASSWORD` (the metadata password). The Dagster instance is not mounted into run pods at all: the core daemon serializes the full instance into each run's `execute_run` args (`instance_ref`), so the run pod reads its storage config from there rather than from any `dagster.yaml`/ConfigMap in its own namespace.
+All run-pod hardening is the core runLauncher baseline, configured once per core and inherited by every location: the container securityContext (drop `ALL`, read-only root filesystem, no privilege escalation), the pod-level securityContext (`runAsNonRoot`/`runAsUser`/`runAsGroup`/`fsGroup`/seccomp Kyverno's Restricted PSS requires), `automountServiceAccountToken: false`, the writable `/tmp` emptyDir, any sidecar-injection labels, `DAGSTER_HOME`, and `DAGSTER_PG_PASSWORD` (the metadata password). The Dagster instance is not mounted into run pods at all: the core daemon serializes the full instance into each run's `execute_run` args (`instance_ref`), so the run pod reads its storage config from there rather than from any `dagster.yaml`/ConfigMap in its own namespace.
 
 ## Run-pod resources
 
@@ -125,18 +125,18 @@ The core runLauncher's `resources` are a baseline shared by every location of a 
 
 ## Network policies
 
-NetworkPolicies live under `networkPolicies` and are rendered by this chart through the templates dependency's `templates.networkPolicy` renderer, invoked with this chart as the root - so template expressions in the values (for example the tenant) resolve against this chart's own helpers, not the subchart's. The chart ships `ingress-from-dagster-core`, letting the tenant's `dagster-core` (webserver and daemon) reach the code server on `4000` (tenant derived from the release namespace; disable with `networkPolicies.ingress-from-dagster-core.enabled: false`). The project baseline denies cross-namespace traffic, so add location-specific egress (to the tenant's app-data project, the metadata database in `data-dagster`, object storage) as further entries under `networkPolicies`; they merge with the built-in policy.
+NetworkPolicies live under `networkPolicies` and are rendered by this chart through the templates dependency's `templates.networkPolicy` renderer, invoked with this chart as the root - so template expressions in the values (for example the tenant) resolve against this chart's own helpers, not the subchart's. The chart ships `ingress-from-dagster-core`, letting the tenant's `dagster-core` (webserver and daemon) reach the code server on `4000` (tenant derived from the release namespace; disable with `networkPolicies.ingress-from-dagster-core.enabled: false`). The project baseline denies cross-namespace traffic, so add location-specific egress (to whatever services this location needs to reach) as further entries under `networkPolicies`; they merge with the built-in policy.
 
 ## Support resources (templates passthrough)
 
-The `templates` value is passed to the [KvalitetsIT templates subchart](https://github.com/KvalitetsIT/helm-templates-chart/tree/main/charts/templates), which renders CiliumNetworkPolicy, SealedSecret, reflected Secret mirrors and generic resources from values. A common pattern is a `templates.resources` entry of `kind: Secret` carrying reflector's `reflector.v1.k8s.emberstack.com/reflects` annotation, which mirrors a credential from a shared data namespace into this location's namespace without duplicating the value.
+The `templates` value is passed to the [KvalitetsIT templates subchart](https://github.com/KvalitetsIT/helm-templates-chart/tree/main/charts/templates), which renders CiliumNetworkPolicy, SealedSecret, reflected Secret mirrors and generic resources from values. A common pattern is a `templates.resources` entry of `kind: Secret` carrying reflector's `reflector.v1.k8s.emberstack.com/reflects` annotation, which mirrors a credential from a shared namespace into this location's namespace without duplicating the value.
 
 ### Minimal example
 
 ```yaml
 # Minimal valid location: only the required knobs set. Renders the Deployment, Service and the default
-# network policy; no databases, buckets, extra env, run-pod resource override, or templates-subchart
-# resources. The target core namespace is derived from the release namespace at deploy time.
+# network policy; no extra env, run-pod resource override, or templates-subchart resources. The target
+# core namespace is derived from the release namespace at deploy time.
 image:
   repository: ghcr.io/example/simple-location
   tag: "1.0.0"
@@ -146,13 +146,13 @@ locationName: simple_location
 
 ### Full example
 
-Exercises `env` (database and bucket connection config), an `extraEnvs` overlay, `envFrom`, a `runPod.resources` override, a `networkPolicies` egress rule, and a `templates` block (secret mirror, CiliumNetworkPolicy):
+Exercises `env` (application config), an `extraEnvs` overlay, `envFrom`, a `runPod.resources` override, a `networkPolicies` egress rule, and a `templates` block (secret mirror, CiliumNetworkPolicy):
 
 ```yaml
-# Full location shape: explicit env (database and bucket connection config with credentials via
-# valueFrom secretKeyRef), an extraEnvs overlay entry, a run-pod resource override, and this location's
-# support resources (secret mirror, network policies, object-storage egress) rendered via the templates
-# subchart passthrough. Hardening, /tmp and netbird for run pods come from the tenant core, not here.
+# Full location shape: explicit env (application config with credentials via valueFrom secretKeyRef),
+# an extraEnvs overlay entry, a run-pod resource override, and this location's support resources
+# (secret mirror, network policies, egress rule) rendered via the templates subchart passthrough.
+# Run-pod hardening, /tmp and any injected sidecars come from the tenant core, not here.
 image:
   repository: ghcr.io/example/full-location
   tag: "1.1.0"
@@ -178,52 +178,34 @@ runPod:
       memory: 8Gi
 
 env:
-  - name: TARGET_FULL_LOCATION_HOST
-    value: full-location-rw.svc.cluster.local
-  - name: TARGET_FULL_LOCATION_PORT
-    value: "5432"
-  - name: TARGET_FULL_LOCATION_DBNAME
-    value: full_location
-  - name: TARGET_FULL_LOCATION_USER
+  - name: EXAMPLE_SERVICE_URL
+    value: https://service.example.com
+  - name: EXAMPLE_SERVICE_USER
     valueFrom:
       secretKeyRef:
-        name: full-location-db
+        name: full-location-credentials
         key: username
-  - name: TARGET_FULL_LOCATION_PASSWORD
+  - name: EXAMPLE_SERVICE_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: full-location-db
+        name: full-location-credentials
         key: password
-  - name: FULL_LOCATION_S3_ENDPOINT
-    value: https://s3.example.com
-  - name: FULL_LOCATION_S3_BUCKET
-    value: full-location
-  - name: FULL_LOCATION_S3_ID
-    valueFrom:
-      secretKeyRef:
-        name: full-location-s3-credentials
-        key: access-key-id
-  - name: FULL_LOCATION_S3_SECRET
-    valueFrom:
-      secretKeyRef:
-        name: full-location-s3-credentials
-        key: secret-access-key
 
 # overlay-style extension (a values-<env>.yaml would set these without replacing env above)
 extraEnvs:
-  - name: ORACLE_HOST
-    value: "oracle.example.com"
-  - name: ORACLE_PASSWORD
+  - name: EXAMPLE_EXTRA_SETTING
+    value: "enabled"
+  - name: EXAMPLE_EXTRA_TOKEN
     valueFrom:
       secretKeyRef:
-        name: oracle-creds
-        key: password
+        name: full-location-extra
+        key: token
 
 envFrom:
   - secretRef:
-      name: ftps-creds
+      name: full-location-env
 
-# extra code-server volume (the default /tmp entry is kept); demonstrates the kitapp-style volume shape
+# extra code-server volume (the default /tmp entry is kept)
 extraVolumes:
   - name: extra-config
     mountPath: /etc/extra
@@ -234,7 +216,7 @@ extraVolumes:
 
 # location-specific netpol, merged with the built-in ingress-from-dagster-core policy
 networkPolicies:
-  egress-to-app-data:
+  egress-to-dependency:
     podSelector: {}
     policyTypes:
       - Egress
@@ -242,27 +224,26 @@ networkPolicies:
       - to:
           - namespaceSelector:
               matchLabels:
-                tenant.kitkube.dk/name: data
-                project.kitkube.dk/name: example
+                kubernetes.io/metadata.name: some-dependency-namespace
 
 templates:
   resources:
-    # Mirror this location's app-data DB credentials into the namespace (location-specific). The shared
+    # Mirror an external credential into this location's namespace (location-specific). The shared
     # Dagster metadata credentials come from the tenant projectDefaults, not here.
-    full-location-db:
+    full-location-credentials:
       apiVersion: v1
       kind: Secret
       metadata:
         annotations:
-          reflector.v1.k8s.emberstack.com/reflects: "data-example/full-location-db"
+          reflector.v1.k8s.emberstack.com/reflects: "source-namespace/full-location-credentials"
       data: {}
 
   ciliumNetworkPolicies:
-    object-storage:
+    egress-external:
       endpointSelector: {}
       egress:
         - toFQDNs:
-            - matchPattern: "*.s3.example.com"
+            - matchPattern: "*.example.com"
           toPorts:
             - ports:
                 - port: "443"

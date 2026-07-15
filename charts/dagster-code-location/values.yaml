@@ -129,7 +129,7 @@ containerSecurityContext:
       - ALL
 
 # -- Per-location run-pod overrides, deep-merged onto the core runLauncher baseline. Set only what
-# differs; empty inherits the core (securityContext, /tmp, netbird, resources floor).
+# differs; empty inherits the core (securityContext, /tmp, sidecars, resources floor).
 # @default -- See [values.yaml](values.yaml)
 # @section -- Run pods
 runPod:

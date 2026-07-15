@@ -56,13 +56,13 @@ There is deliberately no core-namespace label: the generator derives the target 
 
 ## Environment variables
 
-`env` is the location's app config (database and bucket connection env, credentials via `valueFrom.secretKeyRef`), applied to both the code server and the launched run pods. `extraEnvs` is appended after `env` so an overlay values file (e.g. `values-<env>.yaml`) can extend it without replacing it - Helm replaces list values across files rather than merging them, so a single `env` key across two files would lose the base entries. `envFrom` (extended by `extraEnvFrom`) carries whole-secret / ConfigMap sources as standard envFrom entries (`{secretRef}`/`{configMapRef}`); the chart applies them verbatim to the code server and extracts their names into the run pods' container context (`env_secrets`/`env_config_maps`). The chart appends `HOME=/tmp`, `TMPDIR=/tmp` and `PYTHONDONTWRITEBYTECODE=1` (the read-only root filesystem needs a writable `HOME`).
+`env` is the location's application config (settings and credentials via `valueFrom.secretKeyRef`), applied to both the code server and the launched run pods. `extraEnvs` is appended after `env` so an overlay values file (e.g. `values-<env>.yaml`) can extend it without replacing it - Helm replaces list values across files rather than merging them, so a single `env` key across two files would lose the base entries. `envFrom` (extended by `extraEnvFrom`) carries whole-secret / ConfigMap sources as standard envFrom entries (`{secretRef}`/`{configMapRef}`); the chart applies them verbatim to the code server and extracts their names into the run pods' container context (`env_secrets`/`env_config_maps`). The chart appends `HOME=/tmp`, `TMPDIR=/tmp` and `PYTHONDONTWRITEBYTECODE=1` (the read-only root filesystem needs a writable `HOME`).
 
 ## Container context and run pods
 
 The code server sets `DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT` on its own container: a JSON blob the tenant core's K8sRunLauncher deep-merges into every run pod it launches for this location. It carries only per-location deltas - routing (`namespace: <Release.Namespace>` so runs launch into this location's own namespace, the `default` ServiceAccount, image pull secrets) and payload (the location `env`, `env_secrets`, and `runPod.resources`). Optionally it carries `runPod.podSecurityContext` when the location image needs a different uid.
 
-All run-pod hardening is the core runLauncher baseline, configured once per core and inherited by every location: the container securityContext (drop `ALL`, read-only root filesystem, no privilege escalation), the pod-level securityContext (`runAsNonRoot`/`runAsUser`/`runAsGroup`/`fsGroup`/seccomp Kyverno's Restricted PSS requires), `automountServiceAccountToken: false`, the writable `/tmp` emptyDir, the netbird sidecar label, `DAGSTER_HOME`, and `DAGSTER_PG_PASSWORD` (the metadata password). The Dagster instance is not mounted into run pods at all: the core daemon serializes the full instance into each run's `execute_run` args (`instance_ref`), so the run pod reads its storage config from there rather than from any `dagster.yaml`/ConfigMap in its own namespace.
+All run-pod hardening is the core runLauncher baseline, configured once per core and inherited by every location: the container securityContext (drop `ALL`, read-only root filesystem, no privilege escalation), the pod-level securityContext (`runAsNonRoot`/`runAsUser`/`runAsGroup`/`fsGroup`/seccomp Kyverno's Restricted PSS requires), `automountServiceAccountToken: false`, the writable `/tmp` emptyDir, any sidecar-injection labels, `DAGSTER_HOME`, and `DAGSTER_PG_PASSWORD` (the metadata password). The Dagster instance is not mounted into run pods at all: the core daemon serializes the full instance into each run's `execute_run` args (`instance_ref`), so the run pod reads its storage config from there rather than from any `dagster.yaml`/ConfigMap in its own namespace.
 
 ## Run-pod resources
 
@@ -70,11 +70,11 @@ The core runLauncher's `resources` are a baseline shared by every location of a 
 
 ## Network policies
 
-NetworkPolicies live under `networkPolicies` and are rendered by this chart through the templates dependency's `templates.networkPolicy` renderer, invoked with this chart as the root - so template expressions in the values (for example the tenant) resolve against this chart's own helpers, not the subchart's. The chart ships `ingress-from-dagster-core`, letting the tenant's `dagster-core` (webserver and daemon) reach the code server on `4000` (tenant derived from the release namespace; disable with `networkPolicies.ingress-from-dagster-core.enabled: false`). The project baseline denies cross-namespace traffic, so add location-specific egress (to the tenant's app-data project, the metadata database in `data-dagster`, object storage) as further entries under `networkPolicies`; they merge with the built-in policy.
+NetworkPolicies live under `networkPolicies` and are rendered by this chart through the templates dependency's `templates.networkPolicy` renderer, invoked with this chart as the root - so template expressions in the values (for example the tenant) resolve against this chart's own helpers, not the subchart's. The chart ships `ingress-from-dagster-core`, letting the tenant's `dagster-core` (webserver and daemon) reach the code server on `4000` (tenant derived from the release namespace; disable with `networkPolicies.ingress-from-dagster-core.enabled: false`). The project baseline denies cross-namespace traffic, so add location-specific egress (to whatever services this location needs to reach) as further entries under `networkPolicies`; they merge with the built-in policy.
 
 ## Support resources (templates passthrough)
 
-The `templates` value is passed to the [KvalitetsIT templates subchart](https://github.com/KvalitetsIT/helm-templates-chart/tree/main/charts/templates), which renders CiliumNetworkPolicy, SealedSecret, reflected Secret mirrors and generic resources from values. A common pattern is a `templates.resources` entry of `kind: Secret` carrying reflector's `reflector.v1.k8s.emberstack.com/reflects` annotation, which mirrors a credential from a shared data namespace into this location's namespace without duplicating the value.
+The `templates` value is passed to the [KvalitetsIT templates subchart](https://github.com/KvalitetsIT/helm-templates-chart/tree/main/charts/templates), which renders CiliumNetworkPolicy, SealedSecret, reflected Secret mirrors and generic resources from values. A common pattern is a `templates.resources` entry of `kind: Secret` carrying reflector's `reflector.v1.k8s.emberstack.com/reflects` annotation, which mirrors a credential from a shared namespace into this location's namespace without duplicating the value.
 
 ### Minimal example
 
@@ -84,7 +84,7 @@ The `templates` value is passed to the [KvalitetsIT templates subchart](https://
 
 ### Full example
 
-Exercises `env` (database and bucket connection config), an `extraEnvs` overlay, `envFrom`, a `runPod.resources` override, a `networkPolicies` egress rule, and a `templates` block (secret mirror, CiliumNetworkPolicy):
+Exercises `env` (application config), an `extraEnvs` overlay, `envFrom`, a `runPod.resources` override, a `networkPolicies` egress rule, and a `templates` block (secret mirror, CiliumNetworkPolicy):
 
 ```yaml
 {{ .Files.Get "ci/full-values.yaml" -}}

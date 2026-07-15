@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-07-15
+
+### Changed
+- Cleaned up chart comments, the README and the `ci/` example values to be generic. Documentation and examples only; no template behavior or values schema changes.
+
 ## [0.0.2] - 2026-07-14
 
 ### Changed

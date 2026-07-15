@@ -94,7 +94,7 @@ dagster.io/location-name: {{ include "dagster-code-location.locationName" . }}
 {{/* DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT: the per-location deltas the core's K8sRunLauncher deep-merges
      into this location's run pods. Routing (namespace -> runs launch here, service account, pull secrets)
      and payload (env, env_secrets/env_config_maps, runPod.resources, runPod.podSecurityContext). All
-     run-pod hardening (container/pod securityContext, /tmp, netbird, automountServiceAccountToken) is the
+     run-pod hardening (container/pod securityContext, /tmp, sidecars, automountServiceAccountToken) is the
      core baseline; the code location only overrides what differs. */}}
 {{- define "dagster-code-location.containerContext" -}}
 {{- $env := include "dagster-code-location.env" . | fromYamlArray -}}
