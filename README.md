@@ -1,6 +1,6 @@
 # helm-dagster-code-location-chart
 
-Helm chart for a single Dagster code location on Kubernetes: a hardened gRPC code server delivered as its own release into a per-project namespace, alongside a tenant Dagster core (see [kds-dagster-components](https://github.com/KvalitetsIT/kds-dagster-components)).
+Helm chart for a single Dagster code location on Kubernetes: a hardened gRPC code server delivered as its own release into a per-project namespace, alongside a tenant Dagster core (see [kds-components](https://github.com/KvalitetsIT/kds-components)).
 
 ## Charts
 

@@ -84,7 +84,7 @@ applications:
     namespace: tenant-a-dagster-my-location
     project: tenant-a-dagster-my-location
     sources:
-      - repoURL: git@github.com:KvalitetsIT/kds-dagster-components.git
+      - repoURL: git@github.com:KvalitetsIT/kds-components.git
         targetRevision: <repo-tag>          # git tag from this repo
         path: dagster-code-location
         helm:
@@ -102,7 +102,7 @@ applications:
 
 ## Cross-chart contract
 
-This chart's Service is how the [`dagster-workspace-generator`](https://github.com/KvalitetsIT/kds-dagster-components/tree/main/dagster-workspace-generator) discovers code locations and groups them under the right tenant core. The Service and Deployment carry two labels:
+This chart's Service is how the [`dagster-workspace-generator`](https://github.com/KvalitetsIT/kds-components/tree/main/dagster-workspace-generator) discovers code locations and groups them under the right tenant core. The Service and Deployment carry two labels:
 
 - `dagster.io/code-location: "true"` - the generator's label selector for finding code-location Services cluster-wide.
 - `dagster.io/location-name: <locationName>` - the workspace `location_name` the generator writes into the core's `dagster-workspace-yaml` ConfigMap. Defaults to the release name; override via `locationName` for dev/prod parity with the module folder name.
