@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.0.4]
+## [0.0.4] - 2026-08-27
 - Rename referenced repo to kds-components
 - Add revisionHistoryLimit to 2
 
