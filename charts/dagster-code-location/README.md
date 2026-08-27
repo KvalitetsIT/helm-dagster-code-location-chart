@@ -137,11 +137,27 @@ The `templates` value is passed to the [KvalitetsIT templates subchart](https://
 # Minimal valid location: only the required knobs set. Renders the Deployment, Service and the default
 # network policy; no extra env, run-pod resource override, or templates-subchart resources. The target
 # core namespace is derived from the release namespace at deploy time.
+#
+# A real location runs its own image with its definitions baked in. `ct install` has no such image, so
+# image, PYTHONPATH and extraVolumes below point the code server at the throwaway definitions package
+# the lint-test workflow mounts from the ci-definitions ConfigMap. Everything else is the chart default.
 image:
-  repository: ghcr.io/example/simple-location
-  tag: "1.0.0"
+  repository: docker.io/dagster/user-code-example
+  tag: "1.13.13"
 module: simple_location.definitions
 locationName: simple_location
+
+env:
+  - name: PYTHONPATH
+    value: /opt/definitions
+
+extraVolumes:
+  - name: definitions
+    mountPath: /opt/definitions/simple_location
+    readOnly: true
+    volumeSpec:
+      configMap:
+        name: ci-definitions
 ```
 
 ### Full example
@@ -153,9 +169,15 @@ Exercises `env` (application config), an `extraEnvs` overlay, `envFrom`, a `runP
 # an extraEnvs overlay entry, a run-pod resource override, and this location's support resources
 # (secret mirror, network policies, egress rule) rendered via the templates subchart passthrough.
 # Run-pod hardening, /tmp and any injected sidecars come from the tenant core, not here.
+#
+# A real location runs its own image with its definitions baked in. `ct install` has no such image, so
+# image, PYTHONPATH and the definitions entry under extraVolumes point the code server at the throwaway
+# definitions package the lint-test workflow mounts from the ci-definitions ConfigMap. The secrets and
+# the configMap referenced below are stubbed by that same workflow step; on a real cluster the platform
+# reflects them into the namespace.
 image:
-  repository: ghcr.io/example/full-location
-  tag: "1.1.0"
+  repository: docker.io/dagster/user-code-example
+  tag: "1.13.13"
 module: full_location.definitions
 locationName: full_location
 
@@ -190,6 +212,8 @@ env:
       secretKeyRef:
         name: full-location-credentials
         key: password
+  - name: PYTHONPATH
+    value: /opt/definitions
 
 # overlay-style extension (a values-<env>.yaml would set these without replacing env above)
 extraEnvs:
@@ -205,7 +229,7 @@ envFrom:
   - secretRef:
       name: full-location-env
 
-# extra code-server volume (the default /tmp entry is kept)
+# extra code-server volumes (the default /tmp entry is kept)
 extraVolumes:
   - name: extra-config
     mountPath: /etc/extra
@@ -213,6 +237,12 @@ extraVolumes:
     volumeSpec:
       configMap:
         name: extra-config
+  - name: definitions
+    mountPath: /opt/definitions/full_location
+    readOnly: true
+    volumeSpec:
+      configMap:
+        name: ci-definitions
 
 # location-specific netpol, merged with the built-in ingress-from-dagster-core policy
 networkPolicies:
@@ -236,7 +266,11 @@ templates:
       metadata:
         annotations:
           reflector.v1.k8s.emberstack.com/reflects: "source-namespace/full-location-credentials"
-      data: {}
+      # Placeholder keys, overwritten by the reflector with the source secret's data. They keep the
+      # Deployment's secretKeyRefs resolvable on a cluster without the reflector, such as in CI.
+      stringData:
+        username: ""
+        password: ""
 
   ciliumNetworkPolicies:
     egress-external:

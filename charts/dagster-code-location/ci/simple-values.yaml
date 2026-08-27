@@ -1,8 +1,24 @@
 # Minimal valid location: only the required knobs set. Renders the Deployment, Service and the default
 # network policy; no extra env, run-pod resource override, or templates-subchart resources. The target
 # core namespace is derived from the release namespace at deploy time.
+#
+# A real location runs its own image with its definitions baked in. `ct install` has no such image, so
+# image, PYTHONPATH and extraVolumes below point the code server at the throwaway definitions package
+# the lint-test workflow mounts from the ci-definitions ConfigMap. Everything else is the chart default.
 image:
-  repository: ghcr.io/example/simple-location
-  tag: "1.0.0"
+  repository: docker.io/dagster/user-code-example
+  tag: "1.13.13"
 module: simple_location.definitions
 locationName: simple_location
+
+env:
+  - name: PYTHONPATH
+    value: /opt/definitions
+
+extraVolumes:
+  - name: definitions
+    mountPath: /opt/definitions/simple_location
+    readOnly: true
+    volumeSpec:
+      configMap:
+        name: ci-definitions

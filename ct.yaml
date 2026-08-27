@@ -6,6 +6,8 @@ chart-dirs:
 helm-extra-args: --timeout 600s
 namespace: default
 release-label: ct
-skip-clean-up: true
+# No skip-clean-up: each ci/ values file installs into the same namespace, and the network policies
+# and mirrored secrets are named by their values key rather than by release, so a kept release makes
+# the next install collide on them. Uninstalling also gets us ct's pod events and logs on failure.
 check-version-increment: false
 use-helmignore: true

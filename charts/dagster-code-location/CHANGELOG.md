@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.0.4] - 2026-08-27
 - Rename referenced repo to kds-components
 - Add revisionHistoryLimit to 2
+- CI: `ct install` now brings the `ci/` examples up for real. They run the public `dagster/user-code-example` image with a throwaway definitions package mounted from a ConfigMap, and the lint-test workflow stubs the secrets and config the platform normally reflects into the namespace. `ct.yaml` no longer skips clean-up, so each example is uninstalled before the next one installs. Examples and CI only; no template or values schema changes.
 
 ## [0.0.3] - 2026-07-15
 
