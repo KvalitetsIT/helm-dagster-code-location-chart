@@ -8,6 +8,7 @@ metadata:
     {{- include "dagster-code-location.discoveryLabels" . | nindent 4 }}
 spec:
   replicas: 1
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       {{- include "dagster-code-location.selectorLabels" . | nindent 6 }}
