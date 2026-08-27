@@ -124,6 +124,28 @@ jobs:
           kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/refs/tags/v1.19.0/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumnetworkpolicies.yaml
           wait_for_crd ciliumnetworkpolicies.cilium.io
 
+      - name: Create code-location prerequisites
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          # A code location is not self-contained: in a KDS tenant namespace the image pull secret, the
+          # Dagster metadata credentials and the location's own secrets and config are reflected in by
+          # the platform, and the definitions come from the location's own image. `ct install` gets none
+          # of that, so stub it here or the code server never reaches Ready and helm's --wait times out.
+          # ghcr-pull is for a registry the ci/ values do not pull from, so the public image still pulls
+          # anonymously; it only has to exist for the kubelet.
+          kubectl create configmap ci-definitions --namespace default \
+            --from-file=definitions.py=.github/ci/definitions.py
+          kubectl create secret docker-registry ghcr-pull --namespace default \
+            --docker-server=ghcr.io --docker-username=ci --docker-password=ci
+          kubectl create secret generic postgres-dagster-credentials --namespace default \
+            --from-literal=postgresql-password=ci
+          kubectl create secret generic full-location-extra --namespace default \
+            --from-literal=token=ci
+          kubectl create secret generic full-location-env --namespace default \
+            --from-literal=EXAMPLE_ENV_FROM_SECRET=ci
+          kubectl create configmap extra-config --namespace default \
+            --from-literal=extra.conf=ci
+
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct install --config ct.yaml
