@@ -31,6 +31,10 @@ runPod:
     limits:
       cpu: "8"
       memory: 8Gi
+  # this location talks to nothing behind the mesh, so opt its run pods out of the sidecar the core
+  # labels every run pod for; the key wins over the core runLauncher's own value
+  labels:
+    example.com/mesh-inject: "false"
 
 env:
   - name: EXAMPLE_SERVICE_URL

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.0.5] - 2026-09-15
+
+### Added
+- `runPod.labels`: per-location run-pod labels, carried in the container context as `run_k8s_config.pod_template_spec_metadata.labels`. Dagster merges them over the core runLauncher's own `labels`, so a key set here wins, which lets a single location opt out of a label-selected sidecar injection (e.g. a mesh sidecar it has no use for) without touching the shared core. Values are stringified, so an unquoted `false` still renders a valid label value. Empty (the default) leaves the container context unchanged.
+
+### Changed
+- `runPod.podSecurityContext` and `runPod.labels` now build `run_k8s_config` together instead of the securityContext owning the whole key. No change to the rendered output when only one of them is set.
+
 ## [0.0.4] - 2026-08-27
 - Rename referenced repo to kds-components
 - Add revisionHistoryLimit to 2

@@ -93,9 +93,9 @@ dagster.io/location-name: {{ include "dagster-code-location.locationName" . }}
 
 {{/* DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT: the per-location deltas the core's K8sRunLauncher deep-merges
      into this location's run pods. Routing (namespace -> runs launch here, service account, pull secrets)
-     and payload (env, env_secrets/env_config_maps, runPod.resources, runPod.podSecurityContext). All
-     run-pod hardening (container/pod securityContext, /tmp, sidecars, automountServiceAccountToken) is the
-     core baseline; the code location only overrides what differs. */}}
+     and payload (env, env_secrets/env_config_maps, runPod.resources, runPod.podSecurityContext,
+     runPod.labels). All run-pod hardening (container/pod securityContext, /tmp, sidecars,
+     automountServiceAccountToken) is the core baseline; the code location only overrides what differs. */}}
 {{- define "dagster-code-location.containerContext" -}}
 {{- $env := include "dagster-code-location.env" . | fromYamlArray -}}
 {{- $envFrom := include "dagster-code-location.envFrom" . | fromYamlArray -}}
@@ -115,6 +115,13 @@ dagster.io/location-name: {{ include "dagster-code-location.locationName" . }}
 {{- with $envSecrets -}}{{- $_ := set $k8s "env_secrets" . -}}{{- end -}}
 {{- with $envConfigMaps -}}{{- $_ := set $k8s "env_config_maps" . -}}{{- end -}}
 {{- with .Values.runPod.resources -}}{{- $_ := set $k8s "resources" . -}}{{- end -}}
-{{- with .Values.runPod.podSecurityContext -}}{{- $_ := set $k8s "run_k8s_config" (dict "pod_spec_config" (dict "security_context" .)) -}}{{- end -}}
+{{- $runK8s := dict -}}
+{{- with .Values.runPod.podSecurityContext -}}{{- $_ := set $runK8s "pod_spec_config" (dict "security_context" .) -}}{{- end -}}
+{{- with .Values.runPod.labels -}}
+{{- $labels := dict -}}
+{{- range $key, $value := . -}}{{- $_ := set $labels $key (toString $value) -}}{{- end -}}
+{{- $_ := set $runK8s "pod_template_spec_metadata" (dict "labels" $labels) -}}
+{{- end -}}
+{{- with $runK8s -}}{{- $_ := set $k8s "run_k8s_config" . -}}{{- end -}}
 {{- dict "k8s" $k8s | toJson -}}
 {{- end -}}
