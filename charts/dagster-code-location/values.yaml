@@ -139,6 +139,12 @@ runPod:
   # -- Pod securityContext override (e.g. a different runAsUser). Empty inherits the core baseline.
   # @section -- Run pods
   podSecurityContext: {}
+  # -- Run-pod labels, merged onto the core runLauncher's labels; a key set here wins. Mainly to opt a
+  # location out of a label-selected sidecar injection it does not need (e.g. a mesh sidecar whose
+  # profile selects on `<mesh>/inject: "true"`, set to `"false"` here). Values are stringified, so an
+  # unquoted `false` still renders a valid label value. Empty inherits the core baseline.
+  # @section -- Run pods
+  labels: {}
 
 # -- NetworkPolicies for this code location. Rendered by this chart (not the subchart) through the
 # templates dependency's renderer with this chart as the root, so template expressions in the values

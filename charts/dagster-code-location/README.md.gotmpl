@@ -60,13 +60,25 @@ There is deliberately no core-namespace label: the generator derives the target 
 
 ## Container context and run pods
 
-The code server sets `DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT` on its own container: a JSON blob the tenant core's K8sRunLauncher deep-merges into every run pod it launches for this location. It carries only per-location deltas - routing (`namespace: <Release.Namespace>` so runs launch into this location's own namespace, the `default` ServiceAccount, image pull secrets) and payload (the location `env`, `env_secrets`, and `runPod.resources`). Optionally it carries `runPod.podSecurityContext` when the location image needs a different uid.
+The code server sets `DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT` on its own container: a JSON blob the tenant core's K8sRunLauncher deep-merges into every run pod it launches for this location. It carries only per-location deltas - routing (`namespace: <Release.Namespace>` so runs launch into this location's own namespace, the `default` ServiceAccount, image pull secrets) and payload (the location `env`, `env_secrets`, and `runPod.resources`). Optionally it carries `runPod.podSecurityContext` when the location image needs a different uid, and `runPod.labels` when the location needs different run-pod labels than the core's.
 
 All run-pod hardening is the core runLauncher baseline, configured once per core and inherited by every location: the container securityContext (drop `ALL`, read-only root filesystem, no privilege escalation), the pod-level securityContext (`runAsNonRoot`/`runAsUser`/`runAsGroup`/`fsGroup`/seccomp Kyverno's Restricted PSS requires), `automountServiceAccountToken: false`, the writable `/tmp` emptyDir, any sidecar-injection labels, `DAGSTER_HOME`, and `DAGSTER_PG_PASSWORD` (the metadata password). The Dagster instance is not mounted into run pods at all: the core daemon serializes the full instance into each run's `execute_run` args (`instance_ref`), so the run pod reads its storage config from there rather than from any `dagster.yaml`/ConfigMap in its own namespace.
 
 ## Run-pod resources
 
 The core runLauncher's `resources` are a baseline shared by every location of a tenant. To size a single location's runs, set `runPod.resources`; the chart puts them in this location's container context, which Dagster deep-merges onto the launcher baseline and uses for the run container. This is per location and does not touch the shared core. The top-level `resources` value is separate and applies only to the code server (definition loading). Other per-location run-pod overrides live under the same `runPod` key (e.g. `runPod.podSecurityContext`).
+
+## Run-pod labels
+
+The core runLauncher labels every run pod it launches, and those labels are what sidecar injectors and admission policies select on. `runPod.labels` sets labels for this location's run pods only; Dagster merges them over the launcher's own labels, so a key set here wins. The usual reason to set it is to opt a location out of an injection it has no use for - a location that only reaches in-cluster services and the public internet does not need a mesh sidecar, and skipping it drops the sidecar's startup gate and its resource requests from every run. Set the injector's own selector key to `"false"` (or whatever value the selector does not match):
+
+```yaml
+runPod:
+  labels:
+    example.com/mesh-inject: "false"
+```
+
+Values are stringified before they reach the container context, so an unquoted `false` is still a valid label value. Labels are the only per-location way to change injection: the label the core sets is a launcher-wide default, and a location cannot remove a key, only override its value.
 
 ## Network policies
 
@@ -84,7 +96,7 @@ The `templates` value is passed to the [KvalitetsIT templates subchart](https://
 
 ### Full example
 
-Exercises `env` (application config), an `extraEnvs` overlay, `envFrom`, a `runPod.resources` override, a `networkPolicies` egress rule, and a `templates` block (secret mirror, CiliumNetworkPolicy):
+Exercises `env` (application config), an `extraEnvs` overlay, `envFrom`, `runPod.resources` and `runPod.labels` overrides, a `networkPolicies` egress rule, and a `templates` block (secret mirror, CiliumNetworkPolicy):
 
 ```yaml
 {{ .Files.Get "ci/full-values.yaml" -}}
