@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.0.6] - 2026-09-18
+
+### Added
+- `runPod.automountServiceAccountToken`: mounts the ServiceAccount token in the run pods, for a location whose assets call the Kubernetes API themselves. The core runLauncher baseline unmounts it, since run pods normally make no API calls, so this carries `automount_service_account_token` in `run_k8s_config.pod_spec_config` to override that for one location. The code server keeps its own token unmounted either way. Default `false`, which leaves the container context unchanged. Pair it with a `serviceAccountName` of its own, so the RoleBinding that grants the access does not ride on the namespace default SA.
+
 ## [0.0.5] - 2026-09-15
 
 ### Added

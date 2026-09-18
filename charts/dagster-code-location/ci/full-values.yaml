@@ -35,6 +35,9 @@ runPod:
   # labels every run pod for; the key wins over the core runLauncher's own value
   labels:
     example.com/mesh-inject: "false"
+  # this location's assets call the kubernetes api from the run pod, so it needs the token the
+  # core baseline unmounts
+  automountServiceAccountToken: true
 
 env:
   - name: EXAMPLE_SERVICE_URL
