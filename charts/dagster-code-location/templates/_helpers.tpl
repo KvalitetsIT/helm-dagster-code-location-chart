@@ -116,7 +116,10 @@ dagster.io/location-name: {{ include "dagster-code-location.locationName" . }}
 {{- with $envConfigMaps -}}{{- $_ := set $k8s "env_config_maps" . -}}{{- end -}}
 {{- with .Values.runPod.resources -}}{{- $_ := set $k8s "resources" . -}}{{- end -}}
 {{- $runK8s := dict -}}
-{{- with .Values.runPod.podSecurityContext -}}{{- $_ := set $runK8s "pod_spec_config" (dict "security_context" .) -}}{{- end -}}
+{{- $podSpec := dict -}}
+{{- with .Values.runPod.podSecurityContext -}}{{- $_ := set $podSpec "security_context" . -}}{{- end -}}
+{{- if .Values.runPod.automountServiceAccountToken -}}{{- $_ := set $podSpec "automount_service_account_token" true -}}{{- end -}}
+{{- with $podSpec -}}{{- $_ := set $runK8s "pod_spec_config" . -}}{{- end -}}
 {{- with .Values.runPod.labels -}}
 {{- $labels := dict -}}
 {{- range $key, $value := . -}}{{- $_ := set $labels $key (toString $value) -}}{{- end -}}

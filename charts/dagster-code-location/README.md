@@ -55,6 +55,7 @@ A single Dagster code location: a hardened gRPC code server (Deployment + Servic
 | runPod | object | See [values.yaml](values.yaml) | Per-location run-pod overrides, deep-merged onto the core runLauncher baseline. Set only what differs; empty inherits the core (securityContext, /tmp, sidecars, resources floor). |
 | runPod.resources | object | `{}` | Run-pod resources (sizes the data work). Empty inherits the core baseline. |
 | runPod.podSecurityContext | object | `{}` | Pod securityContext override (e.g. a different runAsUser). Empty inherits the core baseline. |
+| runPod.automountServiceAccountToken | bool | `false` | Mount the ServiceAccount token in the run pods. The core baseline unmounts it, since run pods normally make no Kubernetes API calls; set true only for a location whose assets do (e.g. the WMTS seed, which creates a Job in the mapserver namespace). Pair it with a `serviceAccountName` of its own, so the grant does not ride on the namespace default SA. |
 | runPod.labels | object | `{}` | Run-pod labels, merged onto the core runLauncher's labels; a key set here wins. Mainly to opt a location out of a label-selected sidecar injection it does not need (e.g. a mesh sidecar whose profile selects on `<mesh>/inject: "true"`, set to `"false"` here). Values are stringified, so an unquoted `false` still renders a valid label value. Empty inherits the core baseline. |
 
 ### Networking
@@ -136,6 +137,18 @@ runPod:
 
 Values are stringified before they reach the container context, so an unquoted `false` is still a valid label value. Labels are the only per-location way to change injection: the label the core sets is a launcher-wide default, and a location cannot remove a key, only override its value.
 
+## Kubernetes API access from run pods
+
+Run pods make no Kubernetes API calls, so the core runLauncher baseline unmounts their ServiceAccount token. A location whose assets do call the API - launching a Job in another namespace and following its logs, say - sets `runPod.automountServiceAccountToken: true`, which carries `automount_service_account_token` in this location's `run_k8s_config.pod_spec_config` and overrides the baseline for its run pods alone. The code server keeps its own token unmounted regardless; it never needs one.
+
+```yaml
+serviceAccountName: my-location
+runPod:
+  automountServiceAccountToken: true
+```
+
+The token is only an identity: it grants nothing until something binds a Role to that ServiceAccount, and `system:authenticated` holds no rights in these namespaces. Give such a location a `serviceAccountName` of its own rather than leaving it on the namespace `default` SA, so the RoleBinding that grants the access covers this location and not every workload in the namespace. The binding itself belongs with whatever owns the resources being reached, not here.
+
 ## Network policies
 
 NetworkPolicies live under `networkPolicies` and are rendered by this chart through the templates dependency's `templates.networkPolicy` renderer, invoked with this chart as the root - so template expressions in the values (for example the tenant) resolve against this chart's own helpers, not the subchart's. The chart ships `ingress-from-dagster-core`, letting the tenant's `dagster-core` (webserver and daemon) reach the code server on `4000` (tenant derived from the release namespace; disable with `networkPolicies.ingress-from-dagster-core.enabled: false`). The project baseline denies cross-namespace traffic, so add location-specific egress (to whatever services this location needs to reach) as further entries under `networkPolicies`; they merge with the built-in policy.
@@ -215,6 +228,9 @@ runPod:
   # labels every run pod for; the key wins over the core runLauncher's own value
   labels:
     example.com/mesh-inject: "false"
+  # this location's assets call the kubernetes api from the run pod, so it needs the token the
+  # core baseline unmounts
+  automountServiceAccountToken: true
 
 env:
   - name: EXAMPLE_SERVICE_URL

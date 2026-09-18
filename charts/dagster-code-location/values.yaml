@@ -139,6 +139,12 @@ runPod:
   # -- Pod securityContext override (e.g. a different runAsUser). Empty inherits the core baseline.
   # @section -- Run pods
   podSecurityContext: {}
+  # -- Mount the ServiceAccount token in the run pods. The core baseline unmounts it, since run pods
+  # normally make no Kubernetes API calls; set true only for a location whose assets do (e.g. the
+  # WMTS seed, which creates a Job in the mapserver namespace). Pair it with a `serviceAccountName`
+  # of its own, so the grant does not ride on the namespace default SA.
+  # @section -- Run pods
+  automountServiceAccountToken: false
   # -- Run-pod labels, merged onto the core runLauncher's labels; a key set here wins. Mainly to opt a
   # location out of a label-selected sidecar injection it does not need (e.g. a mesh sidecar whose
   # profile selects on `<mesh>/inject: "true"`, set to `"false"` here). Values are stringified, so an
